@@ -1,0 +1,113 @@
+---
+title: "Quantified Self Movement Data Analysis Report"
+author: "Jiayi Jiang"
+date: "Saturday, July 18, 2015"
+output: html_document
+---
+
+### Introduction 
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ¨C a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.  
+
+### Basic settings
+```{r, cache = T}
+Sys.setlocale("LC_ALL", "English")
+setwd("C:/users/Joker/PML_project")
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+```
+
+### Load Data
+```{r, cache = T}
+trainRaw <- read.csv("pml-training.csv")
+testRaw <- read.csv("pml-testing.csv")
+```
+
+### Data Processing
+```{r, cache = T}
+dim(trainRaw)
+dim(testRaw)
+sum(complete.cases(trainRaw))
+```
+
+The training data set contains 19622 observations and 160 variables, while the testing data set contains 20 observations and 160 variables. Hence we want to clean the data fisrt.
+
+
+1.Remove NA values
+```{r, cache = T}
+trainRaw <- trainRaw[, colSums(is.na(trainRaw)) == 0] 
+testRaw <- testRaw[, colSums(is.na(testRaw)) == 0] 
+```  
+
+2.Remove some useless columns
+```{r, cache = T}
+classe <- trainRaw$classe
+trainRemove <- grepl("^X|timestamp|window", names(trainRaw))
+trainRaw <- trainRaw[, !trainRemove]
+trainCleaned <- trainRaw[, sapply(trainRaw, is.numeric)]
+trainCleaned$classe <- classe
+testRemove <- grepl("^X|timestamp|window", names(testRaw))
+testRaw <- testRaw[, !testRemove]
+testCleaned <- testRaw[, sapply(testRaw, is.numeric)]
+dim(testCleaned)
+```
+
+Now we only have 53 variables.
+
+
+### Separate Data
+In this step, we want to separate the cleaned training data into two parts. One have 70% data for training and the other one have 30% to be a validation data set.
+
+```{r, cache = T}
+set.seed(22519) 
+inTrain <- createDataPartition(trainCleaned$classe, p=0.70, list=F)
+trainData <- trainCleaned[inTrain, ]
+testData <- trainCleaned[-inTrain, ]
+```
+
+### Data Modeling
+We gonna choose **Random Forest** algorithm to fit the predictive model since it automatically selects important variables. 
+
+```{r, cache = T}
+controlRf <- trainControl(method="cv", 5)
+modelRf <- train(classe ~ ., data=trainData, method="rf", trControl=controlRf, ntree=250)
+modelRf
+```
+
+Now, we estimate the performance of the model on the validation data set. 
+
+```{r, cache = T}
+predictRf <- predict(modelRf, testData)
+confusionMatrix(testData$classe, predictRf)
+```
+```{r, cache = T}
+accuracy <- postResample(predictRf, testData$classe)
+accuracy
+oose <- 1 - as.numeric(confusionMatrix(testData$classe, predictRf)$overall[1])
+oose
+```
+Hence, the estimated accuracy of the model is `r accuracy[1]` and the estimated out-of-sample error is `r 1-accuracy[1]`.
+
+### Predicting for Test Data Set
+Here, we use the model to the original testing data.
+
+```{r, cache = T}
+result <- predict(modelRf, testCleaned[, -length(names(testCleaned))])
+result
+```  
+
+### Figures
+1. Correlation Matrix Visualization  
+```{r, cache = T}
+corrPlot <- cor(trainData[, -length(names(trainData))])
+corrplot(corrPlot, method="color")
+```
+
+2. Decision Tree Visualization
+```{r, cache = T}
+treeModel <- rpart(classe ~ ., data=trainData, method="class")
+prp(treeModel) 
+```
+
